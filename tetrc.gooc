@@ -1,0 +1,1126 @@
+#include "goolstdlib(2).gooc"
+#include "C2_FONT_SMALL.gooc"
+
+#gool TetrC 61 5
+
+expr SIDE_SCROLL_SPEED	= 2
+expr FIRST_MOVE_DELAY 	= 3
+
+expr PIECE_I = 0
+expr PIECE_O = 1
+expr PIECE_T = 2
+expr PIECE_J = 3
+expr PIECE_L = 4
+expr PIECE_S = 5
+expr PIECE_Z = 6
+
+#spawn MASTER		Master_Obj_Init		// 0
+#spawn TILE			Tile_Obj			// 1
+#spawn INFO			Info_Text			// 2
+#spawn LINES		Lines_Text			// 3
+#spawn LEVEL_T		Level_Text			// 4
+#spawn SCORE		Score_Text			// 5
+#spawn NEXT			Next_Text			// 6
+#spawn NEXT_TILE	Next_Tile			// 7
+#spawn START_LVL	Start_Lvl_Prompt	// 8
+#spawn START_LVL_2	Start_Lvl_Text		// 9
+#spawn PLAY_BG		Background			// 10
+#spawn DUMMY		Dummy				// 11
+
+#text STRINGS		FONT_SMALL [Cr20T]
+"HOW TO PLAY:~nPLAYS WHEN~nYOU'RE BETWEEN~nIRON CRATES~n~nCONTROLS:~nDPAD~n   MOVEMENT~nSQUARE~n   ROTATE1~nCIRCLE~n   ROTATE2~nTRIANGLE~n   NEW GAME ~n   AFTER LOSS"
+"LINES: %03d"
+"SCORE:~n%07d"
+"LEVEL:~n%02d"
+"NEXT:"
+"STARTING LEVEL:  %02d >"
+"STARTING LEVEL: <%02d >"
+"STARTING LEVEL: <%02d "
+"PRESS TRIANGLE TO START"
+
+#sprite TILES		[Sn1hT]
+#tex 0x808080 0 2 7 15 928 32 48 48		// 0
+#tex 0x808080 0 2 7 15 832 32 48 48		// 1
+#tex 0x808080 0 2 7 15 904 32 48 48		// 2
+#tex 0x808080 0 2 7 15 952 56 48 48		// 3
+#tex 0x808080 0 2 7 15 832 80 48 48		// 4
+#tex 0x808080 0 2 7 15 832 56 48 48		// 5
+#tex 0x808080 0 2 7 15 976 56 48 48		// 6
+#tex 0x808080 0 2 7 15 856 32 48 48		// 7
+#tex 0x808080 0 2 7 15 904 80 48 48		// 8
+#tex 0x808080 0 2 7 15 976 80 48 48		// 9
+#tex 0x808080 0 2 7 15 904 56 48 48		// 10
+#tex 0x808080 0 2 7 15 880 32 48 48		// 11
+#tex 0x808080 0 2 7 15 952 80 48 48		// 12
+#tex 0x808080 0 2 7 15 856 80 48 48		// 13
+#tex 0x808080 0 2 7 15 880 80 48 48		// 14
+#tex 0x808080 0 2 7 15 856 56 48 48		// 15
+
+#sprite BG			[Sn1hT]
+#tex 0x808080 0 3 7 15 856 16 16 16
+
+var field_0, field_1, field_2, field_3, field_4, field_5, field_6, field_7, field_8, field_9, 
+	playing, invis, score, lines, g_lvl, ix, iy, curr_piece, next_piece, freq, curr_rot, rot_count, 
+	curr_x, curr_y, tile1_x, tile1_y, tile2_x, tile2_y, tile3_x, tile3_y, tile4_x, tile4_y,
+	s_lvl, move_timer, move_timer2, has_moved
+
+// TODO comment stuff
+
+sub event_handler(e, a) {
+	if (e == 0xC00)
+		accevcstate(Dead_State);
+}
+
+sub check_vis() {
+	if (parent->invis)
+		statusb = statusb | FLAG_INVISIBLE;
+	else
+		statusb = statusb & ~FLAG_INVISIBLE;
+}
+
+sub gen_piece() {
+	//misc = PIECE_O
+	misc = rand(7)
+}
+
+sub get_field(column, row) {
+	var col
+	if (column == 0)
+		col = field_0;
+	if (column == 1)
+		col = field_1;
+	if (column == 2)
+		col = field_2;
+	if (column == 3)
+		col = field_3;
+	if (column == 4)
+		col = field_4;
+	if (column == 5)
+		col = field_5;
+	if (column == 6)
+		col = field_6;
+	if (column == 7)
+		col = field_7;
+	if (column == 8)
+		col = field_8;
+	if (column == 9)
+		col = field_9;
+	
+	misc = col & (1 << row)
+}
+
+sub set_field(column, row, val) {
+	if (column == 0)
+		field_0 = (field_0 & ~(1 << row)) | (val << row);
+	if (column == 1)
+		field_1 = (field_1 & ~(1 << row)) | (val << row);
+	if (column == 2)
+		field_2 = (field_2 & ~(1 << row)) | (val << row);
+	if (column == 3)
+		field_3 = (field_3 & ~(1 << row)) | (val << row);
+	if (column == 4)
+		field_4 = (field_4 & ~(1 << row)) | (val << row);
+	if (column == 5)
+		field_5 = (field_5 & ~(1 << row)) | (val << row);
+	if (column == 6)
+		field_6 = (field_6 & ~(1 << row)) | (val << row);
+	if (column == 7)
+		field_7 = (field_7 & ~(1 << row)) | (val << row);
+	if (column == 8)
+		field_8 = (field_8 & ~(1 << row)) | (val << row);
+	if (column == 9)
+		field_9 = (field_9 & ~(1 << row)) | (val << row);
+}
+
+inline sub getnextpiece() {
+	curr_piece = next_piece
+	gen_piece()
+	next_piece = misc
+	
+	curr_x = 5
+	curr_y = 0
+	
+	if (curr_piece == PIECE_I) {
+		rot_count = 2
+		curr_rot = 1
+	}
+	if (curr_piece == PIECE_O) {
+		rot_count = 1
+		curr_rot = 0
+	}
+	if (curr_piece == PIECE_T) {
+		rot_count = 4
+		curr_rot = 2
+	}
+	if (curr_piece == PIECE_S) {
+		rot_count = 2
+		curr_rot = 0
+	}
+	if (curr_piece == PIECE_Z) {
+		rot_count = 2
+		curr_rot = 0
+	}
+	if (curr_piece == PIECE_L) {
+		rot_count = 4
+		curr_rot = 1
+	}
+	if (curr_piece == PIECE_J) {	
+		rot_count = 4
+		curr_rot = 3
+	}
+}
+
+inline sub move_left() {
+	gettiles(curr_piece, curr_rot)
+	var cant_move = 0
+	if (((tile1_x - 1) < 0) ||
+		((tile2_x - 1) < 0) ||
+		((tile3_x - 1) < 0) ||
+		((tile4_x - 1) < 0))
+	cant_move = 1;
+	
+	get_field(tile1_x - 1, tile1_y)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile2_x - 1, tile2_y)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile3_x - 1, tile3_y)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile4_x - 1, tile4_y)
+	if (misc)
+		cant_move = 1;
+	
+	
+	if (cant_move == 0) {
+		curr_x -= 1
+		misc = 1
+	} else {
+		misc = 0
+	}	
+}
+
+inline sub move_right() {
+	gettiles(curr_piece, curr_rot)
+	var cant_move = 0
+	if (((tile1_x + 1) > 9) ||
+		((tile2_x + 1) > 9) ||
+		((tile3_x + 1) > 9) ||
+		((tile4_x + 1) > 9))
+	cant_move = 1;
+	
+	get_field(tile1_x + 1, tile1_y)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile2_x + 1, tile2_y)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile3_x + 1, tile3_y)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile4_x + 1, tile4_y)
+	if (misc)
+		cant_move = 1;
+	
+	if (cant_move == 0) {
+		misc = 1
+		curr_x += 1
+	} else {
+		misc = 0
+	}
+}
+
+sub check_filled() {
+	var lines_filled = 0
+	
+	var i = 19
+	while (i > 0) {
+		var is_full = 1
+		
+		var j = 0
+		while (j < 10) {
+			get_field(j, i)
+			if (misc == 0) {
+				is_full = 0
+				break
+			}
+			j += 1
+		} 
+		
+		if (is_full) {
+			lines_filled += 1
+			j = i
+			while (j > 0) {
+			
+				var k = 0
+				while (k < 10) {
+					get_field(k, j - 1)
+					if (misc)
+						misc = 1;
+					set_field(k, j, misc)
+					set_field(k, j - 1, 0)
+					k += 1
+				} 
+				j -= 1
+			} 
+			i = 20
+		}		
+		i -= 1
+	} 
+	
+	update_lines(lines_filled)
+	increment_score(lines_filled)
+	if (lines_filled)
+		playframe(0, 2);
+}
+
+sub increment_score(lines_filled) {
+	var multiplier
+	if (lines_filled == 0)
+		multiplier = 0;
+	if (lines_filled == 1)
+		multiplier = 40;
+	if (lines_filled == 2)
+		multiplier = 100;
+	if (lines_filled == 3)
+		multiplier = 300;
+	if (lines_filled == 4)
+		multiplier = 1200;
+		
+	score += (multiplier * (g_lvl + 1))
+}
+
+sub update_lines(lines_filled) {
+	var line_count_prev = lines
+	
+	var i = 0
+	while (i < lines_filled) {
+		lines += 1
+		if (lines % 10 == 0) {
+			var prev = g_lvl
+			var from_lines = lines / 10
+			g_lvl = (prev > from_lines) ? prev : from_lines
+		}
+		i += 1
+	} 
+}
+
+inline sub move_down() {
+	gettiles(curr_piece, curr_rot)
+	var cant_move = 0
+	if (((tile1_y + 1) > 19) || 
+		((tile2_y + 1) > 19) || 
+		((tile3_y + 1) > 19) || 
+		((tile4_y + 1) > 19))
+		cant_move = 1;
+		
+	get_field(tile1_x, tile1_y + 1)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile2_x, tile2_y + 1)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile3_x, tile3_y + 1)
+	if (misc)
+		cant_move = 1;
+		
+	get_field(tile4_x, tile4_y + 1)
+	if (misc)
+		cant_move = 1;
+		
+	if (cant_move == 0) {
+		curr_y += 1
+	} else {
+		save_curr()
+		check_filled()
+		getnextpiece()
+		playframe(0, 2)
+	}
+}
+
+sub save_curr() {
+	set_field(tile1_x, tile1_y, 1)
+	set_field(tile2_x, tile2_y, 1)
+	set_field(tile3_x, tile3_y, 1)
+	set_field(tile4_x, tile4_y, 1)
+}
+
+sub try_rotate_util(new_rot) {
+	var can_rotate = 1
+	gettiles(curr_piece, new_rot)
+	
+	get_field(tile1_x, tile1_y)
+	if (misc)
+		can_rotate = 0;
+	
+	get_field(tile2_x, tile2_y)
+	if (misc)
+		can_rotate = 0;
+		
+	get_field(tile3_x, tile3_y)
+	if (misc)
+		can_rotate = 0;
+	
+	get_field(tile4_x, tile4_y)
+	if (misc)
+		can_rotate = 0;
+		
+	if (tile1_x < 0 || tile1_x > 9 || tile1_y > 19)
+		can_rotate = 0;
+	if (tile2_x < 0 || tile2_x > 9 || tile2_y > 19)
+		can_rotate = 0;
+	if (tile3_x < 0 || tile3_x > 9 || tile3_y > 19)
+		can_rotate = 0;
+	if (tile4_x < 0 || tile4_x > 9 || tile4_y > 19)
+		can_rotate = 0;
+	
+	misc = can_rotate
+}
+
+sub rotate_1() {
+	var next_rot = (curr_rot + rot_count - 1) % rot_count
+	try_rotate_util(next_rot)
+	if (misc)
+		curr_rot = next_rot;
+}
+
+sub rotate_2() {
+	var next_rot = (curr_rot + 1) % rot_count
+	try_rotate_util(next_rot)
+	if (misc)
+		curr_rot = next_rot;
+}
+
+sub gettiles(piece, rot) {
+	if (piece == PIECE_O) {
+		if (rot == 0) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = -1
+			tile2_y = 0
+			tile3_x = -1
+			tile3_y = 1
+			tile4_x = 0
+			tile4_y = 1
+		}
+	}
+	if (piece == PIECE_I) {
+		if (rot == 0) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = -2
+			tile3_x = 0
+			tile3_y = -1
+			tile4_x = 0
+			tile4_y = 1
+		}
+		if (rot == 1) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = -2
+			tile2_y = 0
+			tile3_x = -1
+			tile3_y = 0
+			tile4_x = 1
+			tile4_y = 0
+		}
+	}
+	if (piece == PIECE_T) {
+		if (rot == 0) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = -1
+			tile2_y = 0
+			tile3_x = 0
+			tile3_y = -1
+			tile4_x = 1
+			tile4_y = 0
+		}
+		if (rot == 1) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = -1
+			tile3_x = 1
+			tile3_y = 0
+			tile4_x = 0
+			tile4_y = 1
+		}
+		if (rot == 2) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 1
+			tile2_y = 0
+			tile3_x = 0
+			tile3_y = 1
+			tile4_x = -1
+			tile4_y = 0
+		}
+		if (rot == 3) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = 1
+			tile3_x = -1
+			tile3_y = 0
+			tile4_x = 0
+			tile4_y = -1
+		}
+	}
+	if (piece == PIECE_S) {
+		if (rot == 0) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 1
+			tile2_y = 0
+			tile3_x = 0
+			tile3_y = 1
+			tile4_x = -1
+			tile4_y = 1
+		}
+		if (rot == 1) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = -1
+			tile3_x = 1
+			tile3_y = 0
+			tile4_x = 1
+			tile4_y = 1
+		}
+	}
+	if (piece == PIECE_Z) {
+		if (rot == 0) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = -1
+			tile2_y = 0
+			tile3_x = 0
+			tile3_y = 1
+			tile4_x = 1
+			tile4_y = 1
+		}
+		if (rot == 1) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = 1
+			tile3_x = 1
+			tile3_y = 0
+			tile4_x = 1
+			tile4_y = -1
+		}
+	}
+	if (piece == PIECE_L) {
+		if (rot == 0) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = -1
+			tile3_x = 0
+			tile3_y = 1
+			tile4_x = 1
+			tile4_y = 1
+		}
+		if (rot == 1) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 1
+			tile2_y = 0
+			tile3_x = -1
+			tile3_y = 0
+			tile4_x = -1
+			tile4_y = 1
+		}
+		if (rot == 2) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = 1
+			tile3_x = 0
+			tile3_y = -1
+			tile4_x = -1
+			tile4_y = -1
+		}
+		if (rot == 3) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = -1
+			tile2_y = 0
+			tile3_x = 1
+			tile3_y = 0
+			tile4_x = 1
+			tile4_y = -1
+		}
+	}
+	if (piece == PIECE_J) {
+		if (rot == 0) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = -1
+			tile3_x = 0
+			tile3_y = 1
+			tile4_x = -1
+			tile4_y = 1
+		}
+		if (rot == 1) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 1
+			tile2_y = 0
+			tile3_x = -1
+			tile3_y = 0
+			tile4_x = -1
+			tile4_y = -1
+		}
+		if (rot == 2) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = 0
+			tile2_y = 1
+			tile3_x = 0
+			tile3_y = -1
+			tile4_x = 1
+			tile4_y = -1
+		}
+		if (rot == 3) {
+			tile1_x = 0
+			tile1_y = 0
+			tile2_x = -1
+			tile2_y = 0
+			tile3_x = 1
+			tile3_y = 0
+			tile4_x = 1
+			tile4_y = 1
+		}
+	}
+	
+	tile1_x += curr_x
+	tile1_y += curr_y
+	tile2_x += curr_x
+	tile2_y += curr_y
+	tile3_x += curr_x
+	tile3_y += curr_y
+	tile4_x += curr_x
+	tile4_y += curr_y
+}
+
+inline sub get_freq() {
+	if (g_lvl == 0)
+		freq = 18;
+	if (g_lvl == 1)
+		freq = 16;
+	if (g_lvl == 2)
+		freq = 14;
+	if (g_lvl == 3)
+		freq = 12;
+	if (g_lvl == 4)
+		freq = 10;
+	if (g_lvl == 5)
+		freq = 9;
+	if (g_lvl == 6)
+		freq = 8;
+	if (g_lvl == 7)
+		freq = 7;
+	if (g_lvl == 8)
+		freq = 6;
+	if (g_lvl == 9)
+		freq = 5;
+	if (g_lvl >= 10 && g_lvl <= 12)
+		freq = 4;
+	if (g_lvl >= 13 && g_lvl <= 15)
+		freq = 3;
+	if (g_lvl >= 16 && g_lvl <= 18)
+		freq = 2;
+	if (g_lvl >= 19)
+		freq = 1;
+}
+
+inline sub dist_checks() {
+	if (abs(player->x - x) < 200.0 && 
+		abs(player->z - z) < 200.0 && 
+		abs(player->y - y) < 100.0)
+		playing = 1;
+	else 
+		playing = 0;
+		
+	if (abs(player->x - x) < 1900.0)
+		invis = 0;
+	else 
+		invis = 1;
+		
+	playing = 1;
+	invis = 0;
+}
+
+state Master_Obj_Init {
+	code () {	
+		s_lvl = 0
+		animseq = 0
+		cascadeevent(0xC00, self)
+		do {
+			playframe(0)
+		} while (child != 0)
+		
+		spawn2(TetrC, START_LVL)
+		spawn2(TetrC, START_LVL_2)
+		do {
+			dist_checks()
+			if (playing) {
+				if (dirhold(PAD_W) && s_lvl != 0) 
+					s_lvl -= 1;
+				if (dirhold(PAD_E) && s_lvl != 19)
+					s_lvl += 1;
+					
+				if (buttonpress(PAD_TRIANGLE)) {
+					cascadeevent(0xC00, self)
+					do {
+						playframe(0)
+					} while (child != 0)
+					changestate(Master_Obj)
+				}
+			}
+			playframe(0)
+		} while(1)
+	}
+}
+
+inline sub check_game_over() {
+	var over = 0
+	gettiles(curr_piece, curr_rot)
+	
+	get_field(tile1_x, tile1_y)
+	if (misc)
+		over = 1;
+		
+	get_field(tile2_x, tile2_y)
+	if (misc)
+		over = 1;
+		
+	get_field(tile3_x, tile3_y)
+	if (misc)
+		over = 1;
+		
+	get_field(tile4_x, tile4_y)
+	if (misc)
+		over = 1;
+		
+	misc = over
+}
+
+sub dec_move_timer() {
+	if (move_timer > 0)
+		move_timer -= 1;
+}
+
+sub reset_move_timer() {
+	move_timer = SIDE_SCROLL_SPEED;
+}
+
+state Master_Obj {
+	code () {
+		animseq = 0
+		score = 0
+		g_lvl = s_lvl
+		lines = 0
+		playing = 0
+		field_0 = 0
+		field_1 = 0
+		field_2 = 0
+		field_3 = 0
+		field_4 = 0
+		field_5 = 0
+		field_6 = 0
+		field_7 = 0
+		field_8 = 0
+		field_9 = 0
+		has_moved = 0
+		move_timer = 0
+		move_timer2 = 0
+		var ttick = 0
+		var game_over = 0
+		
+		do (var i = 0) {
+			spawn2(TetrC, TILE, 1, i % 5, i / 5)
+			i += 1
+		} while (i < 50)
+		
+		spawn2(TetrC, PLAY_BG)
+		spawn2(TetrC, NEXT_TILE, 1, 0)
+		spawn2(TetrC, NEXT_TILE, 1, 1)
+		spawn2(TetrC, LINES)
+		spawn2(TetrC, INFO)
+		spawn2(TetrC, LEVEL_T)
+		spawn2(TetrC, SCORE)
+		spawn2(TetrC, NEXT)
+		
+		gen_piece()
+		next_piece = misc
+		getnextpiece()
+				
+		do {
+			dist_checks()
+				
+			if (playing) {
+				ttick += 1
+				dec_move_timer()
+					
+				// check left/right inputs
+				if (dirhold(PAD_W) || dirpress(PAD_W)) {
+					if ((move_timer == 0 && (move_timer2 == 0 || move_timer2 > FIRST_MOVE_DELAY)) || !has_moved) {
+						move_left();
+						if (misc) {
+							reset_move_timer()
+							has_moved = 1
+						}
+					}
+				}
+				
+				if (dirhold(PAD_E) || dirpress(PAD_E)) {
+					if ((move_timer == 0 && (move_timer2 == 0 || move_timer2 > FIRST_MOVE_DELAY)) || !has_moved) {
+						move_right();
+						if (misc) {
+							reset_move_timer()
+							has_moved = 1
+						}
+					}
+				}
+				
+				if (dirhold(PAD_E) || dirhold(PAD_W) || dirpress(PAD_E) || dirpress(PAD_W)) {
+					move_timer2 += 1
+				} else {
+					move_timer2 = 0
+					has_moved = 0
+				}
+					
+				// get speed, if down is held set it to 2
+				get_freq()
+				if (dirhold(PAD_S) || dirpress(PAD_S))
+					freq = 1;
+				
+				// 25 frames after spawn it doesnt move
+				if (ttick < 25)
+					freq = 500;
+					
+				// rotations
+				if (buttonpress(PAD_SQUARE))
+					rotate_1();
+				if (buttonpress(PAD_CIRCLE))
+					rotate_2();		
+
+				if (ttick % freq == 0) {
+					move_down();
+					check_game_over()
+					game_over = misc
+				}					
+			}
+			playframe(0)
+		} while (!game_over)
+		
+		do {
+			playframe(0)
+			if (buttonpress(PAD_TRIANGLE))
+				break;
+		} while (1)
+		changestate(Master_Obj_Init)
+	}
+}
+
+sub getvalue() {
+
+	field_0 = parent->field_0
+	field_1 = parent->field_1
+	field_2 = parent->field_2
+	field_3 = parent->field_3
+	field_4 = parent->field_4
+	field_5 = parent->field_5
+	field_6 = parent->field_6
+	field_7 = parent->field_7
+	field_8 = parent->field_8
+	field_9 = parent->field_9
+	
+	var value = 0
+	var temp_x = 2 * ix
+	var temp_y = 2 * (9 - iy)
+	
+	get_field(temp_x, temp_y)
+	if (misc)
+		value |= 8;
+	
+	get_field(temp_x + 1, temp_y)
+	if (misc)
+		value |= 4;
+		
+	get_field(temp_x, temp_y + 1)
+	if (misc)
+		value |= 2;
+		
+	get_field(temp_x + 1, temp_y + 1)
+	if (misc)
+		value |= 1;
+		
+	
+	curr_x = parent->curr_x
+	curr_y = parent->curr_y
+	gettiles(parent->curr_piece, parent->curr_rot)
+	
+	if ((tile1_x == temp_x && tile1_y == temp_y) || 
+		(tile2_x == temp_x && tile2_y == temp_y) ||
+		(tile3_x == temp_x && tile3_y == temp_y) ||
+		(tile4_x == temp_x && tile4_y == temp_y))
+		value |= 8;
+		
+	if ((tile1_x == (temp_x + 1) && tile1_y == temp_y) || 
+		(tile2_x == (temp_x + 1) && tile2_y == temp_y) ||
+		(tile3_x == (temp_x + 1) && tile3_y == temp_y) ||
+		(tile4_x == (temp_x + 1) && tile4_y == temp_y))
+		value |= 4;
+	
+	if ((tile1_x == temp_x && tile1_y == (temp_y + 1)) || 
+		(tile2_x == temp_x && tile2_y == (temp_y + 1)) ||
+		(tile3_x == temp_x && tile3_y == (temp_y + 1)) ||
+		(tile4_x == temp_x && tile4_y == (temp_y + 1)))
+		value |= 2;
+	 
+	if ((tile1_x == (temp_x + 1) && tile1_y == (temp_y + 1)) || 
+		(tile2_x == (temp_x + 1) && tile2_y == (temp_y + 1)) ||
+		(tile3_x == (temp_x + 1) && tile3_y == (temp_y + 1)) ||
+		(tile4_x == (temp_x + 1) && tile4_y == (temp_y + 1)))
+		value |= 1;
+		
+	misc = value
+}
+
+state Tile_Obj {
+
+	code (_ix, _iy) {
+		ix = _ix
+		iy = _iy
+		vfx = (vfx & -0x100) | 6
+		statusb = 0x40000 
+		zindex = 0x64
+		SetScale(1.0)
+		x = (ix * 25.0) -200.0
+		y = (iy * 19.0) - 100.0
+		animseq = getanim(TILES)
+		do {	
+			check_vis()
+			getvalue()
+			getframe(misc)
+			playframe(animframe) 
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Next_Tile {
+	code (idx) {
+		vfx = (vfx & -0x100) | 6
+		statusb = 0x40000
+		zindex = 0x64
+		animseq = getanim(TILES)
+		SetScale(0x100)
+		y = 20.0
+		x = -30.0 + idx * 25.0
+		do {
+			check_vis()
+			var piece = parent->next_piece
+			if (idx == 0) {
+				if (piece == PIECE_I)
+					getframe(3);
+				if (piece == PIECE_O)
+					getframe(5);
+				if (piece == PIECE_T)
+					getframe(13);
+				if (piece == PIECE_Z)
+					getframe(13);
+				if (piece == PIECE_S)
+					getframe(7);
+				if (piece == PIECE_L)
+					getframe(5);
+				if (piece == PIECE_J)
+					getframe(12);
+			} else {
+				if (piece == PIECE_I)
+					getframe(3);
+				if (piece == PIECE_O)
+					getframe(10);
+				if (piece == PIECE_T)
+					getframe(8);
+				if (piece == PIECE_Z)
+					getframe(2);
+				if (piece == PIECE_S)
+					getframe(8);
+				if (piece == PIECE_L)
+					getframe(12);
+				if (piece == PIECE_J)
+					getframe(10);
+			}
+			playframe(animframe)
+		} while(1)
+	}
+	
+	event => sub event_handler
+}
+
+sub getframe(value) {
+	animframe = value << 8
+}
+
+sub text_init() {
+	statusb = 0x40400
+	SetTextColor(0x1FF, 0x170, 0, 0x1FF, 0, 0)
+	scalex = (0xA3 * 6) / 8
+	scaley = (0x103 * 6) / 8
+	scalez = 0x1000
+	vfx = (vfx & -0x100) | 6
+	zindex = 0x64
+	animseq = getanim(STRINGS)
+}
+
+state Lines_Text {
+	code () {
+		text_init()
+		x = -150.0
+		y = 110.0
+		do {
+			check_vis()
+			var lcl_lines = parent->lines
+			playframe(1.0)
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Info_Text {
+	code () {
+		text_init()
+		x = 165.0 
+		y = 110.0
+		do {
+			check_vis()
+			playframe(0)
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Level_Text {
+	code () {
+		text_init()
+		x = -20.0
+		y = -70.0
+		do {
+			check_vis()
+			var lcl_level = parent->g_lvl
+			playframe(3.0)
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Score_Text {
+	code () {
+		text_init()
+		x = -20.0
+		y = 110.0
+		do {
+			check_vis()
+			var lcl_score = parent->score
+			playframe(2.0)
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Next_Text {
+	code () {	
+		text_init() 
+		x = -17.5
+		y = 50.0
+		do {
+			check_vis()
+			playframe(4.0)
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Start_Lvl_Prompt {
+	code () {
+		text_init()
+		x = 0
+		y = 0
+		do {
+			check_vis()
+			var lcl_lvl = parent->s_lvl
+			if (lcl_lvl == 0)
+				playframe(5.0);
+			else if (lcl_lvl > 0 && lcl_lvl < 19)
+				playframe(6.0);
+			else if (lcl_lvl == 19)
+				playframe(7.0);
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Start_Lvl_Text {
+	code () {
+		text_init()
+		x = 0
+		y = -20.0
+		do {
+			check_vis()
+			playframe(8.0)
+		} while (1)
+	}
+	
+	event => sub event_handler
+}
+
+state Dead_State {
+	code () {}
+}
+
+state Background {
+	code () {
+		vfx = (vfx & -0x100) | 6
+		statusb = 0x40000
+		zindex = 0x64
+		x = -149.5
+		y = -14.0
+		SetScale(5.25, 10.25, 1.0)
+		animseq = getanim(BG)
+		do {
+			check_vis()
+			playframe(0)
+		} while (1)
+	}
+	event => sub event_handler
+}
+
+state Dummy {
+	code () {
+		animseq = 0
+		sleepframe(0)
+	}
+}
